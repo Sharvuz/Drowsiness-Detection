@@ -1,15 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Gợi ý nhạc bằng rec_system.py sau khi thoát camera.
 """
-my_emotion.py
-Gộp 3 chức năng:
-1) Nhận diện biểu cảm bằng DeepFace.
-2) Phát hiện buồn ngủ bằng EAR, cảnh báo sau 1.7 giây nhắm mắt.
-3) Gợi ý nhạc bằng rec_system.py sau khi thoát camera.
-
-Phím bấm:
-- Nhấn q để thoát và lấy cảm xúc cuối cùng để gợi ý nhạc.
-"""
-
 import os
 import time
 import webbrowser
@@ -32,19 +23,18 @@ except Exception:
 
 
 # ==========================================
-# KHỐI 1: CẤU HÌNH CHUNG
+#1: CẤU HÌNH CHUNG
 # ==========================================
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(_file_))
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Ngưỡng EAR: nhỏ hơn ngưỡng này thì xem là mắt đang nhắm.
-EAR_THRESHOLD = 0.25
+EAR_THRESHOLD = 0.2
 
 # Yêu cầu: báo buồn ngủ sau 1.7 giây nhắm mắt liên tục.
 ALARM_TIME_SECONDS = 1.7
 
-# DeepFace khá nặng, không nên phân tích biểu cảm ở mọi frame.
-# Cứ mỗi 10 frame mới phân tích một lần để FPS đỡ bị tụt.
+# Cứ mỗi 10 frame mới phân tích deepface một lần để FPS đỡ bị tụt.
 EMOTION_EVERY_N_FRAMES = 10
 
 curr_emotion = "neutral"
@@ -54,10 +44,6 @@ is_drowsy = False
 frame_count = 0
 prev_frame_time = time.time()
 
-
-# ==========================================
-# KHỐI 2: HÀM PHỤ TRỢ ĐƯỜNG DẪN FILE
-# ==========================================
 
 def find_existing_file(candidate_paths, file_description):
     """Trả về đường dẫn đầu tiên tồn tại trong danh sách candidate_paths."""
@@ -103,22 +89,18 @@ csv_path = find_existing_file(
 
 
 # ==========================================
-# KHỐI 3: ÂM THANH BÁO ĐỘNG
+#2: ÂM THANH BÁO ĐỘNG
 # ==========================================
 
 def init_alarm():
-    if not PYGAME_AVAILABLE:
-        print("[CẢNH BÁO] Chưa cài pygame nên không phát được âm thanh báo động.")
-        return False
-
     if alarm_path is None:
-        print("[CẢNH BÁO] Không có alarm.mp3 nên chỉ hiện chữ cảnh báo, không phát âm thanh.")
+        print("ko tim thay file alarm")
         return False
 
     try:
         pygame.mixer.init()
         pygame.mixer.music.load(alarm_path)
-        print(f"[OK] Đã tải âm thanh báo động: {alarm_path}")
+        print(f"Đã tải âm thanh báo động: {alarm_path}")
         return True
     except Exception as e:
         print(f"[CẢNH BÁO] Không thể tải âm thanh báo động: {e}")
@@ -136,15 +118,13 @@ def stop_alarm(alarm_ready):
 
 
 # ==========================================
-# KHỐI 4: HÀM TÍNH EAR
+#3: HÀM TÍNH EAR
 # ==========================================
 
 def eye_aspect_ratio(eye):
-    """Tính Eye Aspect Ratio từ 6 landmark của một mắt."""
-    A = distance.euclidean(eye[1], eye[5])
-    B = distance.euclidean(eye[2], eye[4])
-    C = distance.euclidean(eye[0], eye[3])
-
+    A = distance.euclidean(eye[1], eye[5]) #khoảng cách độ rộng mí mắt trên và dưới
+    B = distance.euclidean(eye[2], eye[4]) #khoảng cách độ rộng mí mắt trên và dưới
+    C = distance.euclidean(eye[0], eye[3]) #Nằm ở hai góc mắt (khóe mắt và đuôi mắt)
     if C == 0:
         return 0
 
@@ -153,7 +133,7 @@ def eye_aspect_ratio(eye):
 
 
 # ==========================================
-# KHỐI 5: ĐỒNG BỘ NHÃN CẢM XÚC CHO rec_system.py
+#4: ĐỒNG BỘ NHÃN CẢM XÚC CHO rec_system.py
 # ==========================================
 
 def normalize_emotion_for_music(emotion):
@@ -175,11 +155,12 @@ def normalize_emotion_for_music(emotion):
         "drowsy": "drowsy",
     }
 
+ #tra ve bieu cam khuon mat
     return mapping.get(emotion, "neutral")
 
 
 # ==========================================
-# KHỐI 6: GỢI Ý NHẠC
+#5: GỢI Ý NHẠC
 # ==========================================
 
 def recommend_music(final_emotion):
@@ -213,7 +194,7 @@ def recommend_music(final_emotion):
 
 
 # ==========================================
-# KHỐI 7: KHỞI TẠO MODEL VÀ CAMERA
+#6: KHỞI TẠO MODEL VÀ CAMERA
 # ==========================================
 
 if shape_predictor_path is None:
@@ -231,9 +212,10 @@ face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
-# Dlib dùng để lấy 68 landmark, phục vụ tính EAR.
+
+# dlib dùng để lấy 68 tọa độ khuôn mặt
 detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor(shape_predictor_path)
+predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
 (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_68_IDXS["left_eye"]
 (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_68_IDXS["right_eye"]
@@ -241,11 +223,11 @@ predictor = dlib.shape_predictor(shape_predictor_path)
 cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
-    raise RuntimeError("Không thể mở camera. Hãy kiểm tra webcam hoặc quyền truy cập camera.")
+    raise RuntimeError("Không thể mở camera")
 
 camera_fps = cap.get(cv2.CAP_PROP_FPS)
 if camera_fps <= 0:
-    camera_fps = 30
+    camera_fps = 30 #nếu không khởi tạo dc camera(lỗi) thì cho fps mặc định là 30
 
 closed_eye_limit = int(ALARM_TIME_SECONDS * camera_fps)
 print(f"[*] FPS camera khai báo: {camera_fps:.2f}")
@@ -254,7 +236,7 @@ print(f"[*] Tương đương khoảng: {closed_eye_limit} frame theo FPS camera"
 
 
 # ==========================================
-# KHỐI 8: VÒNG LẶP CAMERA
+# 7: VÒNG LẶP CAMERA
 # ==========================================
 
 while True:
@@ -290,14 +272,19 @@ while True:
     # ======================================
     # 8.2 NHẬN DIỆN BIỂU CẢM BẰNG DEEPFACE
     # ======================================
-    faces_cv = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
 
+    #Quét tìm khuôn mặt,scaleFactor=1.3:
+    #Hình ảnh quét sẽ bị thu nhỏ lại 30%(zoom) sau mỗi vòng quét để tìm các khuôn mặt có kích thước khác nhau(hình ảnh gần xa)
+    faces_cv = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
+    #gom cụm(minNeighbors): check nếu khuôn mặt được nhận trúng 5 lần thì mới dc xem là mặt thật(tránh nhiễu)
+
+    #tách mặt ra khỏi bối cảnh(giúp mô hình chỉ cần nhìn mặt không cần nhìn xung quanh)
     for (x, y, w, h) in faces_cv:
         cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
         face_roi = frame[y:y + h, x:x + w]
 
         # DeepFace chạy định kỳ để đỡ lag.
-        if frame_count % EMOTION_EVERY_N_FRAMES == 0:
+        if frame_count % EMOTION_EVERY_N_FRAMES == 0: #các frame thứ 10 mới chạy deepface
             try:
                 try:
                     result = DeepFace.analyze(
@@ -320,7 +307,7 @@ while True:
                 detected_emotion = result.get("dominant_emotion", "neutral").lower()
                 last_normal_emotion = detected_emotion
 
-                # Nếu đang không buồn ngủ thì cảm xúc hiện tại là biểu cảm DeepFace.
+                # Nếu đang không buồn ngủ thì cảm xúc hiện tại là biểu cảm DeepFace nhận diện.
                 if not is_drowsy:
                     curr_emotion = detected_emotion
 
@@ -357,7 +344,10 @@ while True:
         curr_emotion = last_normal_emotion
         stop_alarm(alarm_ready)
 
+    # Duyệt qua từng khuôn mặt tìm được(nếu ảnh có nhiều 2 người)
+    # biến face là hình chữ nhật tọa độ trên mặt
     for face in faces_dlib:
+        # tạo cây hồi quy để đưa chính xác tọa độ 68 điểm vào đúng vị trí của khuôn mặt bằng cách học có giám sát
         shape = predictor(gray, face)
         shape = face_utils.shape_to_np(shape)
 
@@ -429,13 +419,12 @@ while True:
         break
 
 
-# ==========================================
-# KHỐI 9: GIẢI PHÓNG CAMERA VÀ GỢI Ý NHẠC
-# ==========================================
 
 stop_alarm(alarm_ready)
 cap.release()
 cv2.destroyAllWindows()
 
+
+#goi y nhac
 print(f"\n[Kết quả Vision] Cảm xúc chốt lại: {curr_emotion}")
 recommend_music(curr_emotion)
