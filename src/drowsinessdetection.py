@@ -1,86 +1,66 @@
-from scipy.spatial import distance
-from imutils import face_utils
-import dlib
+'''Main executing file. Run this file'''
+import numpy as np
+import webbrowser
+import argparse
 import cv2
-import time
+import os
+from keras.preprocessing.image import img_to_array
+import pandas as pd
+from scipy.spatial import distance
+import dlib
+from imutils import face_utils
+import rec_system
+from train import trainModel, emotion_recognition
+from playsound import playsound
 
-#Minimum threshold of eye aspect ratio below which alarm is triggerd
-EYE_ASPECT_RATIO_THRESHOLD = 0.3
 
-#Minimum consecutive frames for which eye ratio is below threshold for alarm to be triggered
-EYE_ASPECT_RATIO_CONSEC_FRAMES = 50
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-#Counts no. of consecutuve frames below threshold value
-COUNTER = 0
+# command line argument: train the model or display the real time video feed
+# Example: python -u "PATH OF THIS FILE HERE" --mode train to train the model 
+# and python -u "PATH OF THIS FILE HERE" --mode display for webcam
+ap = argparse.ArgumentParser()
+ap.add_argument("--mode",help="train/display")
+mode = ap.parse_args().mode
 
-#Load face cascade which will be used to draw a rectangle around detected faces.
-face_cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
+batch_size = 64
+num_epoch = 30
 
-# def drowsinessCheck():
-#    thresh = 0.25
-#    frame_check = 20
-#    detect = dlib.get_frontal_face_detector()
-#    # Dat file is the crux of the code
-#    predict = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
-#
-#    (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_68_IDXS["left_eye"]
-#    (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_68_IDXS["right_eye"]
-#    cap = cv2.VideoCapture(0)
-#    flag = 0
-#    while True:
-#        ret, frame = cap.read()
-#        frame = imutils.resize(frame, width=450)
-#        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-#        subjects = detect(gray, 0)
-#        for subject in subjects:
-#            shape = predict(gray, subject)
-#            shape = face_utils.shape_to_np(shape)  # converting to NumPy Array
-#            leftEye = shape[lStart:lEnd]
-#            rightEye = shape[rStart:rEnd]
-#            leftEAR = eye_aspect_ratio(leftEye)
-#            rightEAR = eye_aspect_ratio(rightEye)
-#            ear = (leftEAR + rightEAR) / 2.0
-#            leftEyeHull = cv2.convexHull(leftEye)
-#            rightEyeHull = cv2.convexHull(rightEye)
-#            cv2.drawContours(frame, [leftEyeHull], -1, (0, 255, 0), 1)
-#            cv2.drawContours(frame, [rightEyeHull], -1, (0, 255, 0), 1)
-#            if ear < thresh:
-#                flag += 1
-#                print(flag)
-#                if flag >= frame_check:
-#                    cv2.putText(frame, "****************ALERT!****************", (10, 30),
-#                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-#                    cv2.putText(frame, "****************ALERT!****************", (10, 325),
-#                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-#			    #print ("Drowsy")
-#                else:
-#                    flag = 0
-#        cv2.imshow('drowsinessCheck', frame)
-#
-#        if cv2.waitKey(1) & 0xFF == ord('q'):
-#            break
-#    cv2.destroyAllWindows()
-#    cap.release()
+# If command line argument is train, then model is trained (refer to train.py for model architecture)
+if mode == "train":
+    trainModel(num_epoch)
 
-def eye_aspect_ratio(eye):
-    A = distance.euclidean(eye[1], eye[5])
-    B = distance.euclidean(eye[2], eye[4])
-    C = distance.euclidean(eye[0], eye[3])
-
-    ear = (A+B) / (2*C)
-    return ear
-
-#Load face detector and predictor, uses dlib shape predictor file
-detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
-
-#Extract indexes of facial landmarks for the left and right eye
-(lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS['left_eye']
-(rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS['right_eye']
-
-def drowsinessCheck(frame, gray, curr_emotion):
+#Real time webcam feed
+elif mode == "display":
+    #Setup for emotion and eye detection: load model, face detection haarcascade, emotions, eye aspect measurement
+    curr_emotion = "neutral"
     
-    #Minimum threshold of eye aspect ratio below which alarm is triggerd
+    label_dict = {0 : 'Angry', 1 : 'Disgust', 2 : 'Fear', 3 : 'Happiness', 4 : 'Sad', 5 : 'Surprise', 6 : 'Neutral'}
+    
+    model = emotion_recognition((48,48,1))
+    model.load_weights('emotion_weights.hdf5')
+    face_detection = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
+    
+    # prevents openCL usage and unnecessary logging messages
+    cv2.ocl.setUseOpenCL(False)
+    
+    #Setup for drowsiness detection by measuring eye aspect
+    def eye_aspect_ratio(eye):
+        A = distance.euclidean(eye[1], eye[5])
+        B = distance.euclidean(eye[2], eye[4])
+        C = distance.euclidean(eye[0], eye[3])
+        ear = (A+B) / (2*C)
+        return ear
+    
+    #Load face detector and predictor, uses dlib shape predictor file
+    detector = dlib.get_frontal_face_detector()
+    predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+    
+    #Extract indexes of facial landmarks for the left and right eye
+    (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS['left_eye']
+    (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS['right_eye']
+
+    #Minimum threshold of eye aspect ratio below which alarm is triggered
     EYE_ASPECT_RATIO_THRESHOLD = 0.3
     
     #Minimum consecutive frames for which eye ratio is below threshold for alarm to be triggered
@@ -88,36 +68,117 @@ def drowsinessCheck(frame, gray, curr_emotion):
     
     #Counts no. of consecutuve frames below threshold value
     COUNTER = 0
-    
-    #Detect facial points through detector function
-    faces = detector(gray, 0)
 
-    #Detect facial points
-    for face in faces:
+    #Start web cam feed
+    camera = cv2.VideoCapture(0)
+    flag = True
+    while True:
+        _,cap_image = camera.read()
+        cap_img_gray = cv2.cvtColor(cap_image, cv2.COLOR_BGR2GRAY)
+        faces = face_detection.detectMultiScale(cap_img_gray, 1.3, 5)
 
-        shape = predictor(gray, face)
-        shape = face_utils.shape_to_np(shape)
+        #Detect face for emotion detection
+        for (x,y,w,h) in faces:
+            cv2.rectangle(cap_image, (x,y), (x+w,y+h),(255,0,0),2)
+            roi_gray = cap_img_gray[y:y+h, x:x+w]
+            roi_gray = cv2.resize(roi_gray, (48,48))
+            img_pixels = img_to_array(roi_gray)
+            img_pixels = np.expand_dims(img_pixels, axis=0)
+            predictions = model.predict(img_pixels)
+            emotion_label = np.argmax(predictions)
+            emotion_prediction = label_dict[emotion_label]
+            curr_emotion = emotion_prediction
+            cv2.putText(cap_image, emotion_prediction, (int(x), int(y) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
+            
+        #Use dlib's built in prediction/detection modules to detect front face and eye shape  
+        faces_scanned = detector(cap_img_gray, 0)
+        for face in faces_scanned:
+            shape = predictor(cap_img_gray, face)
+            shape = face_utils.shape_to_np(shape)
 
-        #Get array of coordinates of leftEye and rightEye
-        leftEye = shape[lStart:lEnd]
-        rightEye = shape[rStart:rEnd]
+            #Get array of coordinates of leftEye and rightEye
+            leftEye = shape[lStart:lEnd]
+            rightEye = shape[rStart:rEnd]
 
-        #Calculate aspect ratio of both eyes
-        leftEyeAspectRatio = eye_aspect_ratio(leftEye)
-        rightEyeAspectRatio = eye_aspect_ratio(rightEye)
+            #Calculate aspect ratio of both eyes
+            leftEyeAspectRatio = eye_aspect_ratio(leftEye)
+            rightEyeAspectRatio = eye_aspect_ratio(rightEye)
+            eyeAspectRatio = (leftEyeAspectRatio + rightEyeAspectRatio) / 2
 
-        eyeAspectRatio = (leftEyeAspectRatio + rightEyeAspectRatio) / 2
+            #Detect if eye aspect ratio is less than threshold
+            if(eyeAspectRatio < EYE_ASPECT_RATIO_THRESHOLD):
+                COUNTER += 1
+                #If no. of frames is greater than threshold frames,
+                if COUNTER >= EYE_ASPECT_RATIO_CONSEC_FRAMES:
+                    cv2.putText(cap_image, '***Drowsy***', (300,200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 1)
+                    curr_emotion = 'drowsy'
+                    COUNTER = 0
+                    playsound('media/alarm.mp3')
+            else:
+                COUNTER = 0
+ 
+        
+
+        resize_image = cv2.resize(cap_image, (1000,700))
+        cv2.imshow('Face', resize_image)
+
+        #Last detected emotion
+        # --- THOÁT CAMERA BẰNG PHÍM 'q' ---
+        if cv2.waitKey(1) & 0xFF == ord(' '):
+            curr_emotion = emotion_prediction
+            break
+
+    camera.release()
+    cv2.destroyAllWindows()
+
+    print(f"Cảm xúc chốt lại từ Camera: {curr_emotion}")
+
+    # --- XỬ LÝ DỮ LIỆU NHẠC ---
+    df = pd.read_csv("data/valence_arousal_dataset.csv")
 
 
-        #Detect if eye aspect ratio is less than threshold
-        if(eyeAspectRatio < EYE_ASPECT_RATIO_THRESHOLD):
-            COUNTER += 1
-            #If no. of frames is greater than threshold frames,
-            if COUNTER >= EYE_ASPECT_RATIO_CONSEC_FRAMES:
-                #pygame.mixer.music.play(-1)
-                cv2.putText(frame, "You are Drowsy", (150,200), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0,0,255), 2)
-                curr_emotion = 'drowsy'
-        else:
-            #pygame.mixer.music.stop()
-            COUNTER = 0
+    def label_valence(row):
+        return 'low' if row['valence'] <= 0.5 else 'high'
+
+
+    def label_energy(row):
+        return 'low' if row['energy'] <= 0.5 else 'high'
+
+
+    df['valence_type'] = df.apply(lambda row: label_valence(row), axis=1)
+    df['energy_type'] = df.apply(lambda row: label_energy(row), axis=1)
+    gdf = df.groupby(['valence_type', 'energy_type'])
+
+    # --- ĐỒNG BỘ DỮ LIỆU (DATA MAPPING) ---
+    # Đổi tên cảm xúc từ Label (viết hoa) sang chuẩn của rec_system (viết thường)
+    emotion_to_pass = curr_emotion.lower()
+    if emotion_to_pass == 'happiness':
+        emotion_to_pass = 'happy'
+    elif emotion_to_pass == 'surprise':
+        emotion_to_pass = 'surprised'
+    elif emotion_to_pass == 'fear':
+        emotion_to_pass = 'scared'
+
+    # --- GỌI HỆ TƯ VẤN VÀ PHÁT NHẠC ---
+    playlist = rec_system.recommend(gdf, emotion_to_pass)
+
+    if playlist is not None and not playlist.empty:
+        # Trộn ngẫu nhiên bài hát
+        playlist = playlist.sample(frac=1)
+
+        # Lấy thông tin bài hát đầu tiên
+        top_song_id = playlist.iloc[0]['id']
+        top_song_name = playlist.iloc[0]['track_name']
+        top_artist = playlist.iloc[0]['artist_name']
+
+        print(f"\n=> Đang gợi ý bài hát: {top_song_name} - {top_artist}")
+
+        # Tạo đường link Spotify chuẩn
+        spotify_url = f"https://open.spotify.com/track/{top_song_id}"
+
+        print(f"Đang mở trình duyệt...")
+        webbrowser.open(spotify_url)
+    else:
+        print("\nKhông tìm thấy bài hát nào phù hợp cho cảm xúc này trong Dataset.")
+
 
