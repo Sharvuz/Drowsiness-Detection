@@ -1,6 +1,6 @@
 import cv2
 import dlib
-
+import time
 # Dùng để tính khoảng cách giữa 2 điểm.
 from scipy.spatial import distance
 
@@ -87,35 +87,76 @@ predictor = dlib.shape_predictor(
 
 # Mở camera
 cap=cv2.VideoCapture(0)
-# 0 mặc định của laptop
-# 1 camera ngoài
+
 
 # ==========================================
 # KHỐI 4: CẤU HÌNH NGƯỠNG BUỒN NGỦ
 # ==========================================
 
-# Nếu EAR nhỏ hơn ngưỡng này → mắt nhắm
+# 1. Đặt thời gian buồn ngủ mong muốn (tính bằng giây)
+ALARM_TIME_SECONDS = 1.5
+
+# 2. Lấy chỉ số FPS mặc định của Camera thông qua OpenCV
+# Biến cap đã được khai báo ở trên: cap = cv2.VideoCapture(0)
+camera_fps = cap.get(cv2.CAP_PROP_FPS)
+
+# Xử lý ngoại lệ: Một số webcam lỗi sẽ trả về fps = 0, ta cần đặt mức dự phòng
+if camera_fps == 0:
+    camera_fps = 30 # Đặt tạm 15 FPS làm mặc định nếu không đọc được
+
+# 3. Tự động tính toán số frame giới hạn
+# Dùng int() để làm tròn thành số nguyên, vì frame không thể là số thập phân
+CLOSED_EYE_LIMIT = int(ALARM_TIME_SECONDS * camera_fps)
+
+print(f"[*] FPS Camera: {camera_fps}")
+print(f"[*] He thong se bao dong sau: {CLOSED_EYE_LIMIT} frames nham mat lien tuc.")
+
 EAR_THRESHOLD = 0.3
-
-# Số frame nhắm mắt liên tục để cảnh báo
-CLOSED_EYE_LIMIT = 50
-
-# Biến đếm số frame nhắm mắt
 closed_eye_counter = 0
+
+
 
 
 # ==========================================
 # KHỐI 5: VÒNG LẶP XỬ LÝ
 # ==========================================
 
+# Khởi tạo các biến để đo thời gian FPS
+prev_frame_time = 0
+new_frame_time = 0
+
 while True:
-
-    # Đọc frame từ camera
+    # 1. Đọc frame từ camera
     ret, frame = cap.read()
-
-    # Nếu camera lỗi
     if not ret:
         break
+
+    # 2. Bắt đầu bấm giờ cho frame hiện tại
+    new_frame_time = time.time()
+
+    # 3. Tính toán FPS
+    # Tránh lỗi chia cho 0 nếu vòng lặp chạy quá nhanh (0 giây)
+    if (new_frame_time - prev_frame_time) > 0:
+        fps = 1 / (new_frame_time - prev_frame_time)
+    else:
+        fps = 0
+
+    # Cập nhật lại mốc thời gian cho vòng lặp tiếp theo
+    prev_frame_time = new_frame_time
+
+    # Chuyển FPS thành số nguyên (integer) để in cho đẹp
+    fps_int = int(fps)
+
+    # In FPS lên góc PHẢI của màn hình (tránh đè lên EAR ở góc trái)
+    cv2.putText(
+        frame,
+        f"FPS: {fps_int}",
+        (450, 30),  # Tọa độ X=450, Y=30. Em có thể chỉnh lại X nếu màn hình camera rộng hơn
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 255, 0),  # Màu xanh lá
+        2
+    )
 
     # Chuyển frame sang ảnh xám
     # Chuyển sang ảnh xám giúp model xử lí nhanh hơn
